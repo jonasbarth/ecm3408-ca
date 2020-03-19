@@ -1,4 +1,4 @@
-package main
+package util
 
 import (
 	"github.com/google/uuid"
@@ -11,18 +11,12 @@ type Email struct {
 	UUID string `json:"uuid"`
 }
 
-
+//Sets the UUID of the email
 func (email *Email) SetUUID() bool {
 	id, err := uuid.NewUUID()
 	if err != nil {
 		return false
 	}
-	email.UUID = id
+	email.UUID = id.String()
 	return true
 }
-
-/*
-func New(source string, destination string, body string) Email {
-	email := Email {source, destination, body};
-	return email;
-} */

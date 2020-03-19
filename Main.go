@@ -1,28 +1,29 @@
 package main
 
 import (
-	//"MSA"
-	"log"
-	"github.com/gorilla/mux"
-	"net/http"
-	//"fmt"
+	"user"
+
 )
 
 
-func handleRequests(msa MSA) {
-	router := mux.NewRouter().StrictSlash(true)
-	router.HandleFunc("/sendEmail/{user}", msa.AddEmailToOutbox).Methods("POST")
-	router.HandleFunc("/sendEmail/{user}", msa.ListOutbox).Methods("GET")
-	log.Fatal(http.ListenAndServe(":8888", router));
-}
 
 
 
 
 func main() {
+	/*
+	blueBook := BlueBook{make(map[string]string)}
+	blueBook.AddMapping("here.com", "http://localhost:8889")
+	go blueBook.HandleRequests()
 
-	user := User{make([]Email, 0), make([]Email, 0), "fred@here.com"}
-	msa := MSA{make(map[string]*User), "here.com"}
+	*/
+	
+	user := User{make([]*Email, 0), make([]*Email, 0), "fred@here.com"}
+	msa := MSA{make(map[string]*User), "here.com", "http://localhost:8888"}
 	msa.CreateUser(&user)
-	handleRequests(msa);
+	/*
+	go msa.HandleRequests()
+	mta := MTA{make([]*Email, 0), "http://localhost:8889", "http://localhost:8888"}
+	mta.PollMSA(user.EmailAddress) */
+	
 }
