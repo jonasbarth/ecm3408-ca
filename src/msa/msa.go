@@ -7,12 +7,13 @@ import (
 	"log"
 	"../util"
 	"encoding/json"
+	"fmt"
 )
 
 type MSA struct {
 	Users map[string] *util.User;
 	domain string;
-	networkAddress string;
+	NetworkAddress string;
 }
 
 func (msa *MSA) HandleRequests() {
@@ -24,7 +25,8 @@ func (msa *MSA) HandleRequests() {
 	router.HandleFunc("/deleteOutbox/{user}/{uuid}", msa.DeleteEmailFromOutbox).Methods("DELETE")
 	router.HandleFunc("/deleteInbox/{user}/{uuid}", msa.DeleteEmailFromInbox).Methods("DELETE")
 	router.HandleFunc("/popOutbox/{user}", msa.PopOutbox).Methods("DELETE")
-	log.Fatal(http.ListenAndServe(":8888", router));
+	fmt.Println("MSA Service is running at " + msa.NetworkAddress)
+	log.Fatal(http.ListenAndServe(msa.NetworkAddress, router));
 }
 
 //Creates a new user on the email server
@@ -38,7 +40,7 @@ func (msa *MSA) CreateUser(user *util.User) {
 
 //Adds an email to the user outbox of the email source address
 func (msa *MSA) AddEmailToOutbox(w http.ResponseWriter, r *http.Request) {
-
+	fmt.Println(msa.NetworkAddress + " : adding email to outbox")
 	decoder := json.NewDecoder(r.Body)
 	var email util.Email;
 	
@@ -63,16 +65,19 @@ func (msa *MSA) AddEmailToOutbox(w http.ResponseWriter, r *http.Request) {
 
 //Adds an email to the user inbox of the email source address
 func (msa *MSA) AddEmailToInbox(w http.ResponseWriter, r *http.Request) {
+	fmt.Println(msa.NetworkAddress + " : adding email to inbox")
 
 	decoder := json.NewDecoder(r.Body)
 	var email util.Email;
 	
 	if err := decoder.Decode(&email); err == nil {
 
-		if _, ok := msa.Users[email.Source]; ok {
+		//If the user exists on this server
+		if _, ok := msa.Users[email.Destination]; ok {
 			w.WriteHeader(http.StatusCreated)
 			email.SetUUID()
-			msa.Users[email.Source].AddEmailToInbox(&email)
+			msa.Users[email.Destination].AddEmailToInbox(&email)
+			fmt.Println("Added email to " + email.Destination + " inbox")
 
 		} else {
 			//the user does not exist on this MSA server
@@ -219,9 +224,16 @@ func (msa *MSA) exists(emailAddress string) bool {
 
 func main() {
 	user := util.User{make([]*util.Email, 0), make([]*util.Email, 0), "fred@here.com"}
-	msa := MSA{make(map[string]*util.User), "here.com", "http://localhost:8888"}
+	msa := MSA{make(map[string]*util.User), "here.com", ":7001"}
 	msa.CreateUser(&user)
-	msa.HandleRequests()
+	go msa.HandleRequests()
+
+	msa2 := MSA{make(map[string]*util.User), "there.com", ":8001"}
+	user2 := util.User{make([]*util.Email, 0), make([]*util.Email, 0), "fred@there.com"}
+	msa2.CreateUser(&user2)
+	msa2.HandleRequests()
+
+
 }
 
 

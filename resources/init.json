@@ -1,0 +1,36 @@
+{
+    "mta" : [
+        {
+            "domain" : "here.com",
+            "port" : 7000
+        },
+        {
+            "domain" : "there.com",
+            "port" : 8000
+        }
+    ],
+
+    "msa" : [
+        {
+            "domain" : "here.com",
+            "port" : 7001
+        },
+        {
+            "domain" : "there.com",
+            "port" : 8001
+        }
+    ],
+
+    "users" : [
+        {
+            "name" : "fred@here.com",
+            "server" : "here.com"
+        },
+        {
+            "name" : "bob@there.com",
+            "server" : "there.com"
+        }
+    ],
+
+    "bluebook" : 9000
+}

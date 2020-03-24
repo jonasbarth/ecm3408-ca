@@ -51,6 +51,7 @@ func (blueBook *BlueBook) FindURL(w http.ResponseWriter, r *http.Request) {
 //Adds a mapping from a domain to a network address
 func (blueBook *BlueBook) AddMapping(domain string, networkAddress string) {
 	blueBook.AddressBook[domain] = networkAddress
+	fmt.Println(domain + " is available at " + networkAddress)
 }
 
 
@@ -58,7 +59,8 @@ func (blueBook *BlueBook) HandleRequests() {
 
 	router := mux.NewRouter().StrictSlash(true)
 	router.HandleFunc("/findURL/{emailAddress}", blueBook.FindURL).Methods("GET")
-	log.Fatal(http.ListenAndServe(":8887", router));
+	fmt.Println("Bluebook Server is running at: http://localhost:9000")
+	log.Fatal(http.ListenAndServe(":9000", router));
 
 }
 
@@ -81,7 +83,9 @@ func getDomain(emailAddress string) (string, bool) {
 
 func main() {
 	blueBook := BlueBook{make(map[string]string)}
-	blueBook.AddMapping("here.com", "http://localhost:8888")
+	blueBook.AddMapping("here.com", "http://localhost:7000")
+	blueBook.AddMapping("there.com", "http://localhost:8000")
+	
 	blueBook.HandleRequests()
 }
 
