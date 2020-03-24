@@ -37,7 +37,7 @@ func (mta *MTA) PostEmail(w http.ResponseWriter, r *http.Request) {
 		if enc, err := json.Marshal(email); err == nil {
 			
 			//Create the URL 
-			MSAPostURL := mta.MSAURL + "/toInbox/" + email.Destination
+			MSAPostURL := mta.MSAURL + "/inbox"
 
 			//Create and make the POST request
 			if req, err1 := http.NewRequest("POST", MSAPostURL, bytes.NewBuffer(enc)); err1 == nil {
@@ -46,9 +46,7 @@ func (mta *MTA) PostEmail(w http.ResponseWriter, r *http.Request) {
 				//Get the response
 				if resp, err2 := client.Do(req); err2 == nil {
 
-					if _, err3 := ioutil.ReadAll(resp.Body); err3 == nil {
-						w.WriteHeader(http.StatusOK)
-					}
+					w.WriteHeader(resp.StatusCode)
 				} else {
 					//POST request failed
 					w.WriteHeader(http.StatusInternalServerError)
@@ -74,7 +72,12 @@ func (mta *MTA) PostEmail(w http.ResponseWriter, r *http.Request) {
 func (mta *MTA) PollMSA(emailAddress string) {
 
 
+
+
 	for ok := true; ok; ok = true {
+
+		//get all users from the MSA
+		MSAGetURL := mta.MSAURL + "/u"
 
 		time.Sleep(5000 * time.Millisecond)
 
@@ -82,59 +85,64 @@ func (mta *MTA) PollMSA(emailAddress string) {
 		if email, err := mta.peekOutbox(emailAddress); err == nil {
 
 			fmt.Println("Email successfully retrieved from")
+
 			//Delete the email from the outbox 
-			if ok, err0 := mta.deleteOutbox(email); ok  {
+			if ok, err1 := mta.deleteOutbox(email); ok  {
 				
 				//Marshal the email and send it to the correct MTA
-				if enc, err1 := json.Marshal(&email); err1 == nil {
+				if enc, err2 := json.Marshal(&email); err2 == nil {
 					
 					//Get the network address of the correct MTA service
-					MTAPostURL := mta.getURL(email.Destination) + "/postEmail/" + email.Destination
+					if MTAPostURL, err3 := mta.getURL(email.Destination); err3 == nil {
 
-					fmt.Println("Posting email to MTA at " + MTAPostURL)
-					//Create and make the POST request
-					if req, err2 := http.NewRequest("POST", MTAPostURL, bytes.NewBuffer(enc)); err2 == nil {
-						
-						client := &http.Client {}
+						MTAPostURL = MTAPostURL + "/postEmail/" + email.Destination
+						fmt.Println("Posting email to MTA at " + MTAPostURL)
 
-						//Get the response and implement error handling
-						if resp, err3 := client.Do(req); err3 == nil {
-							fmt.Printf("Reponse %s\n", resp.Status)
-							break
+						//Create and make the POST request
+						if req, err4 := http.NewRequest("POST", MTAPostURL, bytes.NewBuffer(enc)); err4 == nil {
 							
+							client := &http.Client {}
+
+							//Get the response and implement error handling
+							if resp, err5 := client.Do(req); err5 == nil {
+								fmt.Printf("Reponse %s\n", resp.Status)
+								break
+								
+							} else {
+								//POST request failed
+								fmt.Printf("POST request to %s failed with error %s\n", email.Destination, err5)
+								break
+								
+							}
+
 						} else {
 							//POST request failed
-							fmt.Printf("POST request to %s failed with error %s\n", email.Destination, err3)
-							break
-							
+							fmt.Printf("POST request to %s failed with error %s\n", email.Destination, err4)
+							break	
 						}
-
 					} else {
-						//POST request failed
-						fmt.Printf("POST request to %s failed with error %s\n", email.Destination, err2)
-						break
-						
-					}
+						//Could not get the URL for the specified email addresss
+						fmt.Printf("Bluebook server could not find network address of %s with error %s\n", email.Destination, err3)
+					} 
+				
+					
 				} else {
 					//Marshalling failed
-					fmt.Printf("Cannot marshal JSON with error %s\n", err1)
+					fmt.Printf("Cannot marshal JSON with error %s\n", err2)
 					break
 				}
 			} else {
-				fmt.Printf("Deleting email from outbox failed with error %s\n", err0)
+				//Could not delete the email from the user's outbox
+				fmt.Printf("Deleting email from outbox failed with error %s\n", err1)
 			}
 
-				
-				
-			
-		} else {mta.getURL(email.Destination)
-			fmt.Println("Failed to pop from outbox")
+						
+		} else {
+			//Could not get the email from the user's outbox
+			fmt.Println("Failed to get email from outbox with error %s\n", err)
 			break
 		}
 	}
-
-		
-
 }
 
 
@@ -142,7 +150,7 @@ func (mta *MTA) PollMSA(emailAddress string) {
 //Gets the URL of the email server belonging to the email
 //Returns the URL as a string if found on the bluebook server
 //Returns an empty string if the URL does not exist on the bluebook server
-func (mta *MTA) getURL(email string) string {
+func (mta *MTA) getURL(email string) (string, error) {
 
 	url := mta.BlueBookURL + "/" + email
 	
@@ -154,18 +162,22 @@ func (mta *MTA) getURL(email string) string {
 
 			if body, err3 := ioutil.ReadAll(resp.Body); err3 == nil {
 				fmt.Println(email + " can be found at " + string(body))
-				return string(body)[1:len(string(body))-1]
+				return string(body)[1:len(string(body))-1], nil
+			} else {
+				fmt.Printf("GET request to %s failed with %s\n", url, err3)
+				return "", err3
 			}
 		} else {
+			fmt.Printf("GET request to %s failed with %s\n", url, err2)
 			//GET request failed
-			return ""
+			return "", err2
 		}
 
 	} else {
+		fmt.Printf("GET request to %s failed with %s\n", url, err1)
 		//GET request failed
-		return ""
+		return "", err1
 	}
-	return ""
 }
 
 
@@ -294,6 +306,9 @@ func main() {
 
 	msa2Address := "http://localhost:8001"
 	mta2 := MTA{make([]*util.Email, 0), bluebookURL, ":8000", msa2Address}
+
+	
+
 	mta2.HandleRequests()
 }
 

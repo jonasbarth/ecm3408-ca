@@ -3,7 +3,7 @@ package main
 import (
 	"github.com/gorilla/mux"
 	"net/http"
-	"strings"
+	"../util"
 	"encoding/json"
 	"log"
 	"fmt"
@@ -20,7 +20,7 @@ func (blueBook *BlueBook) FindURL(w http.ResponseWriter, r *http.Request) {
 	emailAddress := vars["emailAddress"]
 
 	//extract the domain of the email address as a substring
-	if domain, ok := getDomain(emailAddress); ok {
+	if domain, ok := util.GetDomain(emailAddress); ok {
 		
 		//ensure there exists a mapping between the domain and a network address
 		if networkAddress, ok := blueBook.AddressBook[domain]; ok {
@@ -64,20 +64,7 @@ func (blueBook *BlueBook) HandleRequests() {
 
 }
 
-//Retrieves the domain of an email address
-//Returns the domain and true is the email address is legal (legal = contains @ somewhere)
-//Returns an empty string and false if the email address is illegal (illegal = does not contain @)
-func getDomain(emailAddress string) (string, bool) {
-	index := strings.Index(emailAddress, "@")
 
-
-	if index != -1 {
-		domain := emailAddress[index + 1:len(emailAddress)]
-		return domain, true
-	}
-	return "", false
-	
-}
 
 
 

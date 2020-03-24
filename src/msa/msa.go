@@ -12,60 +12,85 @@ import (
 
 type MSA struct {
 	Users map[string] *util.User;
-	domain string;
+	Domain string;
 	NetworkAddress string;
 }
 
 func (msa *MSA) HandleRequests() {
 	router := mux.NewRouter().StrictSlash(true)
-	router.HandleFunc("/toOutbox/{user}", msa.AddEmailToOutbox).Methods("POST")
-	router.HandleFunc("/toInbox/{user}", msa.AddEmailToInbox).Methods("POST")
-	router.HandleFunc("/listOutbox/{user}", msa.ListOutbox).Methods("GET")
-	router.HandleFunc("/listInbox/{user}", msa.ListInbox).Methods("GET")
-	router.HandleFunc("/deleteOutbox/{user}/{uuid}", msa.DeleteEmailFromOutbox).Methods("DELETE")
-	router.HandleFunc("/deleteInbox/{user}/{uuid}", msa.DeleteEmailFromInbox).Methods("DELETE")
+	router.HandleFunc("/outbox", msa.AddEmailToOutbox).Methods("POST")
+	router.HandleFunc("/inbox", msa.AddEmailToInbox).Methods("POST")
+	router.HandleFunc("/outbox/{user}", msa.ListOutbox).Methods("GET")
+	router.HandleFunc("/inbox/{user}", msa.ListInbox).Methods("GET")
+	router.HandleFunc("/outbox/{user}/{uuid}", msa.DeleteEmailFromOutbox).Methods("DELETE")
+	router.HandleFunc("/inbox/{user}/{uuid}", msa.DeleteEmailFromInbox).Methods("DELETE")
 	router.HandleFunc("/peekOutbox/{user}", msa.PeekOutbox).Methods("GET")
+	router.HandleFunc("/peekInbox/{user}", msa.PeekInbox).Methods("GET")
+	router.HandleFunc("/users", msa.ListUsers).Methods("GET")
 	fmt.Println("MSA Service is running at " + msa.NetworkAddress)
 	log.Fatal(http.ListenAndServe(msa.NetworkAddress, router));
 }
 
 //Creates a new user on the email server
 //Users email address has to be unique
-func (msa *MSA) CreateUser(user *util.User) {
-	if !msa.exists(user.EmailAddress) {
-		msa.Users[user.EmailAddress] = user;
+func (msa *MSA) CreateUser(emailAddress string) bool {
+	domain, _ := util.GetDomain(emailAddress)
+
+	//If the user does not already exist on this server and the domain of the email address matches that of this email server
+	if (!msa.exists(emailAddress) && domain == msa.Domain) {
+		fmt.Printf("Creating user %s on email server %s\n", emailAddress, msa.Domain)
+		user := util.User{make([]*util.Email, 0), make([]*util.Email, 0), emailAddress}
+		msa.Users[emailAddress] = &user
+		return true
+	} else if (msa.exists(emailAddress) && domain == msa.Domain) {
+		return true
 	}
+	return false
 }
+
+
+
 
 
 //Adds an email to the user outbox of the email source address
 func (msa *MSA) AddEmailToOutbox(w http.ResponseWriter, r *http.Request) {
-	fmt.Println(msa.NetworkAddress + " : adding email to outbox")
+	
+
 	decoder := json.NewDecoder(r.Body)
 	var email util.Email;
 	
 	if err := decoder.Decode(&email); err == nil {
 
-		if _, ok := msa.Users[email.Source]; ok {
-			w.WriteHeader(http.StatusCreated)
-			email.SetUUID()
-			msa.Users[email.Source].AddEmailToOutbox(&email)
 
-		} else {
-			//the user does not exist on this MSA server
-			w.WriteHeader(http.StatusNotFound)
-		}
+		if ok := msa.CreateUser(email.Source); ok {
+
+			if _, ok := msa.Users[email.Source]; ok {
+				w.WriteHeader(http.StatusCreated)
+				email.SetUUID()
+				msa.Users[email.Source].AddEmailToOutbox(&email)
+				fmt.Println(msa.NetworkAddress + " : adding email to outbox")
 	
-	  } else {
-		//the JSON cannot be decoded
-		w.WriteHeader(http.StatusBadRequest)
-	  }
+			} else {
+				//the user does not exist on this MSA server
+				fmt.Printf("User does not exist on this server\n")
+				w.WriteHeader(http.StatusNotFound)
+			}
+		} else {
+			//The domain of the email does not correspond to this email server
+			fmt.Printf("The domain of %s does not correspond to this domain %s\n", email.Source, msa.Domain)
+			w.WriteHeader(http.StatusBadRequest)
+		}
+
+	} else {
+	//the JSON cannot be decoded
+	fmt.Printf("JSON cannot be decoded with error %s\n", err)
+	w.WriteHeader(http.StatusBadRequest)
+	}
 }
 
 
 //Adds an email to the user inbox of the email source address
 func (msa *MSA) AddEmailToInbox(w http.ResponseWriter, r *http.Request) {
-	fmt.Println(msa.NetworkAddress + " : adding email to inbox")
 
 	decoder := json.NewDecoder(r.Body)
 	var email util.Email;
@@ -73,11 +98,11 @@ func (msa *MSA) AddEmailToInbox(w http.ResponseWriter, r *http.Request) {
 	if err := decoder.Decode(&email); err == nil {
 
 		//If the user exists on this server
-		if _, ok := msa.Users[email.Destination]; ok {
+		if msa.exists(email.Destination) {
 			w.WriteHeader(http.StatusCreated)
 			email.SetUUID()
 			msa.Users[email.Destination].AddEmailToInbox(&email)
-			fmt.Println("Added email to " + email.Destination + " inbox")
+			fmt.Println(msa.NetworkAddress + " : adding email to " + email.Destination + "inbox")
 
 		} else {
 			//the user does not exist on this MSA server
@@ -213,6 +238,49 @@ func (msa *MSA) PeekOutbox(w http.ResponseWriter, r *http.Request) {
 }
 
 
+//Returns the most recent email from the specified user's inbox
+func (msa *MSA) PeekInbox(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	user := vars["user"]
+
+	//make sure user exists on this server
+	if msa.exists(user) {
+
+		w.WriteHeader(http.StatusOK)
+
+		//get the latest email from the outbox
+		var email *util.Email
+		email = msa.Users[user].PeekInbox()
+
+		if enc, err := json.Marshal(email); err == nil {
+			w.Write([]byte(enc))
+
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+
+	} else {
+		//user does not exist on this server
+		w.WriteHeader(http.StatusNotFound)
+	}
+}
+
+//Lists all the users of this email server so that the MTA can utilise
+//the list for polling all of their outboxes
+func (msa *MSA) ListUsers(w http.ResponseWriter, r *http.Request) {
+
+	
+	if enc, err := json.Marshal(msa.getUsers()); err == nil {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(enc))
+
+	} else {
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+	
+}
+
+
 //Helper method to determine whether a user exists on this server
 //Returns true if user exists, false if user does not exist
 func (msa *MSA) exists(emailAddress string) bool {
@@ -220,16 +288,22 @@ func (msa *MSA) exists(emailAddress string) bool {
 	return ok;
 }
 
+func (msa *MSA) getUsers() []string {
+	//keys := reflect.ValueOf(msa.Users).MapKeys()
+	users := []string{}
+	for user := range msa.Users {
+		users = append(users, user)
+	}
+	return users
+}
 
 func main() {
-	user := util.User{make([]*util.Email, 0), make([]*util.Email, 0), "fred@here.com"}
 	msa := MSA{make(map[string]*util.User), "here.com", ":7001"}
-	msa.CreateUser(&user)
+
 	go msa.HandleRequests()
 
 	msa2 := MSA{make(map[string]*util.User), "there.com", ":8001"}
-	user2 := util.User{make([]*util.Email, 0), make([]*util.Email, 0), "fred@there.com"}
-	msa2.CreateUser(&user2)
+
 	msa2.HandleRequests()
 
 

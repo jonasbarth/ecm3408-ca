@@ -69,6 +69,16 @@ func (user *User) PeekOutbox() *Email {
 }
 
 
+//Peeks at the most recent email in the inbox
+func (user *User) PeekInbox() *Email {
+	if len(user.Inbox) == 0 {
+		return nil
+	}
+	email := user.Inbox[len(user.Inbox)-1]
+	return email
+}
+
+
 //Removes an element from an Email slice at the given index
 //Returns the new slice and the removed element if found
 //Returns the original box and nil if the box is empty
