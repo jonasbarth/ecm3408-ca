@@ -24,7 +24,7 @@ func (msa *MSA) HandleRequests() {
 	router.HandleFunc("/listInbox/{user}", msa.ListInbox).Methods("GET")
 	router.HandleFunc("/deleteOutbox/{user}/{uuid}", msa.DeleteEmailFromOutbox).Methods("DELETE")
 	router.HandleFunc("/deleteInbox/{user}/{uuid}", msa.DeleteEmailFromInbox).Methods("DELETE")
-	router.HandleFunc("/popOutbox/{user}", msa.PopOutbox).Methods("DELETE")
+	router.HandleFunc("/peekOutbox/{user}", msa.PeekOutbox).Methods("GET")
 	fmt.Println("MSA Service is running at " + msa.NetworkAddress)
 	log.Fatal(http.ListenAndServe(msa.NetworkAddress, router));
 }
@@ -53,7 +53,7 @@ func (msa *MSA) AddEmailToOutbox(w http.ResponseWriter, r *http.Request) {
 
 		} else {
 			//the user does not exist on this MSA server
-			w.WriteHeader(http.StatusBadRequest)
+			w.WriteHeader(http.StatusNotFound)
 		}
 	
 	  } else {
@@ -81,7 +81,7 @@ func (msa *MSA) AddEmailToInbox(w http.ResponseWriter, r *http.Request) {
 
 		} else {
 			//the user does not exist on this MSA server
-			w.WriteHeader(http.StatusBadRequest)
+			w.WriteHeader(http.StatusNotFound)
 		}
 	
 	  } else {
@@ -153,7 +153,7 @@ func (msa *MSA) DeleteEmailFromOutbox(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusAccepted)
 		} else {
 			//no email has the specified UUID
-			w.WriteHeader(http.StatusNotFound)
+			w.WriteHeader(http.StatusAccepted)
 		}
 
 	} else {
@@ -176,7 +176,7 @@ func (msa *MSA) DeleteEmailFromInbox(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusAccepted)
 		} else {
 			//no email with the UUID can be found
-			w.WriteHeader(http.StatusNotFound)
+			w.WriteHeader(http.StatusAccepted)
 		}
 
 	} else {
@@ -185,9 +185,8 @@ func (msa *MSA) DeleteEmailFromInbox(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-//Removes and returns the last Email message from the users outbox
-//If the outbox is empty, null is returned
-func (msa *MSA) PopOutbox(w http.ResponseWriter, r *http.Request) {
+//Returns the most recent email from the specified user's outbox
+func (msa *MSA) PeekOutbox(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	user := vars["user"]
 
@@ -198,7 +197,7 @@ func (msa *MSA) PopOutbox(w http.ResponseWriter, r *http.Request) {
 
 		//get the latest email from the outbox
 		var email *util.Email
-		email = msa.Users[user].PopOutbox()
+		email = msa.Users[user].PeekOutbox()
 
 		if enc, err := json.Marshal(email); err == nil {
 			w.Write([]byte(enc))

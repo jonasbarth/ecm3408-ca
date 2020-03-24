@@ -51,13 +51,22 @@ func (user *User) AddEmailToInbox(email *Email) {
 }
 
 
-//Pops the last email found in the outbox
+//Pops the most recent email found in the outbox
 func (user *User) PopOutbox() *Email {
 	var email *Email
 	user.Outbox, email = remove(user.Outbox, len(user.Outbox) - 1)
 	return email
 }
 
+
+//Peeks at the most recent email in the outbox
+func (user *User) PeekOutbox() *Email {
+	if len(user.Outbox) == 0 {
+		return nil
+	}
+	email := user.Outbox[len(user.Outbox)-1]
+	return email
+}
 
 
 //Removes an element from an Email slice at the given index

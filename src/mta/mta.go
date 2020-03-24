@@ -78,17 +78,19 @@ func (mta *MTA) PollMSA(emailAddress string) {
 
 		time.Sleep(5000 * time.Millisecond)
 
-		var email util.Email
 		//Get the email from outbox of the MSA to which the email belongs
-		if body, ok := mta.popOutbox(emailAddress); ok {
+		if email, err := mta.peekOutbox(emailAddress); err == nil {
 
-			//unmarshal the email
-			if err := json.Unmarshal(body, &email); err == nil {
-				//deliver the email to the MTA of the destination address
-
+			fmt.Println("Email successfully retrieved from")
+			//Delete the email from the outbox 
+			if ok, err0 := mta.deleteOutbox(email); ok  {
+				
+				//Marshal the email and send it to the correct MTA
 				if enc, err1 := json.Marshal(&email); err1 == nil {
-
+					
+					//Get the network address of the correct MTA service
 					MTAPostURL := mta.getURL(email.Destination) + "/postEmail/" + email.Destination
+
 					fmt.Println("Posting email to MTA at " + MTAPostURL)
 					//Create and make the POST request
 					if req, err2 := http.NewRequest("POST", MTAPostURL, bytes.NewBuffer(enc)); err2 == nil {
@@ -118,12 +120,13 @@ func (mta *MTA) PollMSA(emailAddress string) {
 					fmt.Printf("Cannot marshal JSON with error %s\n", err1)
 					break
 				}
-				
 			} else {
-				fmt.Printf("Cannot unmarshal JSON with error %s\n", err)
-				break
-
+				fmt.Printf("Deleting email from outbox failed with error %s\n", err0)
 			}
+
+				
+				
+			
 		} else {mta.getURL(email.Destination)
 			fmt.Println("Failed to pop from outbox")
 			break
@@ -170,38 +173,85 @@ func (mta *MTA) getURL(email string) string {
 //Pops the outbox of the user as specified by the email address
 //Returns the email and true if an email exists in the user's outbox
 //Returns nil and false if the outbox is empty
-func (mta *MTA) popOutbox(emailAddress string) ([]byte, bool) {
+func (mta *MTA) peekOutbox(emailAddress string) (*util.Email, error) {
 
 
-	//Create the URL
-	MSAGetURL := fmt.Sprintf("%s%s%s", mta.MSAURL, "/popOutbox/", emailAddress)
+	MSAGetURL := mta.MSAURL + "/peekOutbox/" + emailAddress
 
-	fmt.Println(MSAGetURL)
-	//poll the MSA for new emails ever x seconds
-	if req, err := http.NewRequest("DELETE", MSAGetURL, nil); err == nil {
+	var email util.Email
+	
+
+	if req, err := http.NewRequest("GET", MSAGetURL, nil); err == nil {
 				
 		client := &http.Client {}
 		//Get the response
 		if resp, err1 := client.Do(req); err1 == nil {
 
 			if body, err2 := ioutil.ReadAll(resp.Body); err2 == nil {
+
+				if err3 := json.Unmarshal(body, &email); err3 == nil {
+					return &email, nil
+				} else {
+					fmt.Printf("Could not unmarshal email with error %s\n", err3)
+					return nil, err3
+				}
 				
-				fmt.Println(string(body))
-				return body, true
 				
+			} else {
+				fmt.Printf("GET failed with %s\n", err2)
+				return nil, err2
+			}
+		} else {
+			
+			//DELETE request failed
+			fmt.Printf("DELETE failed with %s\n", err1)
+			return nil, err1
+		}
+
+	} else {
+		
+		//DELETE request failed
+		fmt.Printf("DELETE failed with %s\n", err)
+		return nil, err
+	}
+
+}
+
+
+func (mta *MTA) deleteOutbox(email *util.Email) (bool, error) {
+
+
+	MSADeleteURL := mta.MSAURL + "/deleteOutbox/" + email.Source + "/" + email.UUID
+	
+
+	fmt.Println(MSADeleteURL)
+
+	//poll the MSA for new emails ever x seconds
+	if req, err := http.NewRequest("DELETE", MSADeleteURL, nil); err == nil {
 				
+		client := &http.Client {}
+		//Get the response
+		if resp, err1 := client.Do(req); err1 == nil {
+
+			if _, err2 := ioutil.ReadAll(resp.Body); err2 == nil {
+				
+				return true, nil
+			} else {
+				fmt.Printf("DELETE failed with %s\n", err2)
+				return false, err2
 			}
 		} else {
 			//DELETE request failed
 			fmt.Printf("DELETE failed with %s\n", err1)
+			return false, err1
 		}
 
 	} else {
 		//DELETE request failed
 		fmt.Printf("DELETE failed with %s\n", err)
+		return false, err
 	}
-	fmt.Println("Popoutbox failed")
-	return nil, false
+
 }
 
 
