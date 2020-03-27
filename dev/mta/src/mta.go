@@ -6,7 +6,7 @@ import (
 	"bytes"
 	"io/ioutil"
 	"fmt"
-	"../util"
+	"../../util"
 	"github.com/gorilla/mux"
 	"log"
 	"time"
@@ -22,7 +22,7 @@ type MTA struct {
 
 //Posts the email into a users inbox via the MSA microservice
 //MTA and MSA have the same network address
-func (mta *MTA) PostEmail(w http.ResponseWriter, r *http.Request) {
+func (mta *MTA) SendEmail(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Println("Received post request")
 
@@ -69,7 +69,7 @@ func (mta *MTA) PostEmail(w http.ResponseWriter, r *http.Request) {
 
 //Polls its own MSA microservice every x seconds and reads and deletes the latest email
 //Then sends the email to the MTA of the destination address
-func (mta *MTA) PollMSA(emailAddress string) {
+func (mta *MTA) PollMSA() {
 
 
 
@@ -77,71 +77,76 @@ func (mta *MTA) PollMSA(emailAddress string) {
 	for ok := true; ok; ok = true {
 
 		//get all users from the MSA
-		MSAGetURL := mta.MSAURL + "/u"
-
 		time.Sleep(5000 * time.Millisecond)
+		users := mta.getUsers()
 
-		//Get the email from outbox of the MSA to which the email belongs
-		if email, err := mta.peekOutbox(emailAddress); err == nil {
+		for _, emailAddress := range users {
+			
 
-			fmt.Println("Email successfully retrieved from")
+			//Get the email from outbox of the MSA to which the email belongs
+			if email, err := mta.peekOutbox(emailAddress); err == nil {
 
-			//Delete the email from the outbox 
-			if ok, err1 := mta.deleteOutbox(email); ok  {
-				
-				//Marshal the email and send it to the correct MTA
-				if enc, err2 := json.Marshal(&email); err2 == nil {
+				fmt.Println("Email successfully retrieved from " + emailAddress)
+
+				//Delete the email from the outbox 
+				if ok, err1 := mta.deleteOutbox(email); ok  {
 					
-					//Get the network address of the correct MTA service
-					if MTAPostURL, err3 := mta.getURL(email.Destination); err3 == nil {
+					//Marshal the email and send it to the correct MTA
+					if enc, err2 := json.Marshal(&email); err2 == nil {
+						
+						//Get the network address of the correct MTA service
+						if MTAPostURL, err3 := mta.getURL(email.Destination); err3 == nil {
 
-						MTAPostURL = MTAPostURL + "/postEmail/" + email.Destination
-						fmt.Println("Posting email to MTA at " + MTAPostURL)
+							MTAPostURL = MTAPostURL + "/send/" + email.Destination
+							fmt.Println("Posting email to MTA at " + MTAPostURL)
 
-						//Create and make the POST request
-						if req, err4 := http.NewRequest("POST", MTAPostURL, bytes.NewBuffer(enc)); err4 == nil {
-							
-							client := &http.Client {}
-
-							//Get the response and implement error handling
-							if resp, err5 := client.Do(req); err5 == nil {
-								fmt.Printf("Reponse %s\n", resp.Status)
-								break
+							//Create and make the POST request
+							if req, err4 := http.NewRequest("POST", MTAPostURL, bytes.NewBuffer(enc)); err4 == nil {
 								
+								client := &http.Client {}
+
+								//Get the response and implement error handling
+								if resp, err5 := client.Do(req); err5 == nil {
+									fmt.Printf("Reponse %s\n", resp.Status)
+									break
+									
+								} else {
+									//POST request failed
+									fmt.Printf("POST request to %s failed with error %s\n", email.Destination, err5)
+									break
+									
+								}
+
 							} else {
 								//POST request failed
-								fmt.Printf("POST request to %s failed with error %s\n", email.Destination, err5)
-								break
-								
+								fmt.Printf("POST request to %s failed with error %s\n", email.Destination, err4)
+								break	
 							}
-
 						} else {
-							//POST request failed
-							fmt.Printf("POST request to %s failed with error %s\n", email.Destination, err4)
-							break	
-						}
-					} else {
-						//Could not get the URL for the specified email addresss
-						fmt.Printf("Bluebook server could not find network address of %s with error %s\n", email.Destination, err3)
-					} 
-				
+							//Could not get the URL for the specified email addresss
+							fmt.Printf("Bluebook server could not find network address of %s with error %s\n", email.Destination, err3)
+						} 
 					
+						
+					} else {
+						//Marshalling failed
+						fmt.Printf("Cannot marshal JSON with error %s\n", err2)
+						break
+					}
 				} else {
-					//Marshalling failed
-					fmt.Printf("Cannot marshal JSON with error %s\n", err2)
-					break
+					//Could not delete the email from the user's outbox
+					fmt.Printf("Deleting email from outbox failed with error %s\n", err1)
 				}
+
+							
 			} else {
-				//Could not delete the email from the user's outbox
-				fmt.Printf("Deleting email from outbox failed with error %s\n", err1)
+				//Could not get the email from the user's outbox
+				fmt.Println("Failed to get email from outbox with error %s\n", err)
+				break
 			}
 
-						
-		} else {
-			//Could not get the email from the user's outbox
-			fmt.Println("Failed to get email from outbox with error %s\n", err)
-			break
 		}
+		
 	}
 }
 
@@ -161,7 +166,6 @@ func (mta *MTA) getURL(email string) (string, error) {
 		if resp, err2 := client.Do(req); err2 == nil {
 
 			if body, err3 := ioutil.ReadAll(resp.Body); err3 == nil {
-				fmt.Println(email + " can be found at " + string(body))
 				return string(body)[1:len(string(body))-1], nil
 			} else {
 				fmt.Printf("GET request to %s failed with %s\n", url, err3)
@@ -233,10 +237,7 @@ func (mta *MTA) peekOutbox(emailAddress string) (*util.Email, error) {
 func (mta *MTA) deleteOutbox(email *util.Email) (bool, error) {
 
 
-	MSADeleteURL := mta.MSAURL + "/deleteOutbox/" + email.Source + "/" + email.UUID
-	
-
-	fmt.Println(MSADeleteURL)
+	MSADeleteURL := mta.MSAURL + "/outbox/" + email.Source + "/" + email.UUID
 
 	//poll the MSA for new emails ever x seconds
 	if req, err := http.NewRequest("DELETE", MSADeleteURL, nil); err == nil {
@@ -266,10 +267,46 @@ func (mta *MTA) deleteOutbox(email *util.Email) (bool, error) {
 
 }
 
+//Gets a list of users from the MSA of this email server
+//The list is used to poll the users' inboxes
+func (mta *MTA) getUsers() []string {
+
+	MSAGetURL := mta.MSAURL + "/users"
+	var users []string
+
+	if req, err := http.NewRequest("GET", MSAGetURL, nil); err == nil {
+				
+		client := &http.Client {}
+
+		//Get the response
+		if resp, err1 := client.Do(req); err1 == nil {
+	
+
+			if body, err2 := ioutil.ReadAll(resp.Body); err2 == nil {
+
+				if err3 := json.Unmarshal(body, &users); err3 == nil {
+					return users
+
+				} else {
+					fmt.Printf("Could not unmarshal JSON with error %s\n", err3)
+				}
+			} else {
+				fmt.Printf("Could not read response body with error %\n", err2)
+			}
+		} else {
+			fmt.Printf("GET request failed with error %s\n", err1)
+		}
+	} else {
+		fmt.Printf("GET request failed with error %s\n", err)
+	}
+	return users
+
+}
+
 
 func (mta *MTA) HandleRequests() {
 	router := mux.NewRouter().StrictSlash(true)
-	router.HandleFunc("/postEmail/{user}", mta.PostEmail).Methods("POST")
+	router.HandleFunc("/send/{user}", mta.SendEmail).Methods("POST")
 	
 	fmt.Println("MTA Service is running at " + mta.URL)
 	log.Fatal(http.ListenAndServe(mta.URL, router));
@@ -278,36 +315,20 @@ func (mta *MTA) HandleRequests() {
 
 func main() {
 
-	jsonFile, err := os.Open("../resources/init.json")
-    // if we os.Open returns an error then handle it
-    if err != nil {
-        fmt.Println(err)
-	}
-	
-	defer jsonFile.Close()
-
-    byteValue, _ := ioutil.ReadAll(jsonFile)
-
-    var result map[string]interface{}
-	json.Unmarshal([]byte(byteValue), &result)
-	
-	fmt.Println(result["mta"])
-
-
-	bluebookURL := "http://localhost:9000/findURL"
-	msaAddress := "http://localhost:7001"
+	bluebookURL := "http://bluebook:9000/address"
+	msaAddress := "http://msa:7001"
 	mta := MTA{make([]*util.Email, 0), bluebookURL, ":7000", msaAddress}
 	go mta.HandleRequests()
 
 	mta.getURL("fred@here.com")
 	mta.getURL("fred@there.com")
 
-	go mta.PollMSA("fred@here.com")
+	go mta.PollMSA()
 
-	msa2Address := "http://localhost:8001"
+	msa2Address := "http://msa:8001"
 	mta2 := MTA{make([]*util.Email, 0), bluebookURL, ":8000", msa2Address}
 
-	
+	go mta2.PollMSA()
 
 	mta2.HandleRequests()
 }

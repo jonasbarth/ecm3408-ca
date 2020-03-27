@@ -1,0 +1,25 @@
+version: "3.3"
+services:
+  bluebook:
+    build: 
+      context: ./dev
+      dockerfile: ./bluebook/Dockerfile
+    ports:
+      - "3000:9000"
+      
+  msa:
+    build:
+      context: ./dev
+      dockerfile: ./msa/Dockerfile
+    ports:
+      - "4001:7001"
+      - "5001:8001"
+
+  mta:
+    build:
+      context: ./dev
+      dockerfile: ./mta/Dockerfile
+    ports:
+      - "4000:7000"
+      - "5000:8000"
+

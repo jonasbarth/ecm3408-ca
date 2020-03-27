@@ -5,7 +5,7 @@ import (
 	"github.com/gorilla/mux"
 	"net/http"
 	"log"
-	"../util"
+	"../../util"
 	"encoding/json"
 	"fmt"
 )
@@ -82,9 +82,9 @@ func (msa *MSA) AddEmailToOutbox(w http.ResponseWriter, r *http.Request) {
 		}
 
 	} else {
-	//the JSON cannot be decoded
-	fmt.Printf("JSON cannot be decoded with error %s\n", err)
-	w.WriteHeader(http.StatusBadRequest)
+		//the JSON cannot be decoded
+		fmt.Printf("JSON cannot be decoded with error %s\n", err)
+		w.WriteHeader(http.StatusBadRequest)
 	}
 }
 
@@ -175,9 +175,11 @@ func (msa *MSA) DeleteEmailFromOutbox(w http.ResponseWriter, r *http.Request) {
 	if msa.exists(user) {
 
 		if ok := msa.Users[user].DeleteFromOutbox(uuid); ok {
+			fmt.Printf("Email with uuid %s successfully deleted from %s inbox\n", uuid, user)
 			w.WriteHeader(http.StatusAccepted)
 		} else {
 			//no email has the specified UUID
+			fmt.Printf("Email with uuid %s does not exist in %s inbox\n", uuid, user)
 			w.WriteHeader(http.StatusAccepted)
 		}
 

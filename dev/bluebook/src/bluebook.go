@@ -3,7 +3,7 @@ package main
 import (
 	"github.com/gorilla/mux"
 	"net/http"
-	"../util"
+	"../../util"
 	"encoding/json"
 	"log"
 	"fmt"
@@ -11,6 +11,7 @@ import (
 
 type BlueBook struct {
 	AddressBook map[string]string
+	BluebookAddress string
 }
 
 
@@ -58,9 +59,9 @@ func (blueBook *BlueBook) AddMapping(domain string, networkAddress string) {
 func (blueBook *BlueBook) HandleRequests() {
 
 	router := mux.NewRouter().StrictSlash(true)
-	router.HandleFunc("/findURL/{emailAddress}", blueBook.FindURL).Methods("GET")
-	fmt.Println("Bluebook Server is running at: http://localhost:9000")
-	log.Fatal(http.ListenAndServe(":9000", router));
+	router.HandleFunc("/address/{emailAddress}", blueBook.FindURL).Methods("GET")
+	fmt.Println("Bluebook Server is running at: " + blueBook.BluebookAddress)
+	log.Fatal(http.ListenAndServe(blueBook.BluebookAddress, router));
 
 }
 
@@ -69,9 +70,9 @@ func (blueBook *BlueBook) HandleRequests() {
 
 
 func main() {
-	blueBook := BlueBook{make(map[string]string)}
-	blueBook.AddMapping("here.com", "http://localhost:7000")
-	blueBook.AddMapping("there.com", "http://localhost:8000")
+	blueBook := BlueBook{make(map[string]string), ":9000"}
+	blueBook.AddMapping("here.com", "http://mta:7000")
+	blueBook.AddMapping("there.com", "http://mta:8000")
 	
 	blueBook.HandleRequests()
 }
