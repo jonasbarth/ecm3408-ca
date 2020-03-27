@@ -1,10 +1,11 @@
 package util
 
+//User representation on an email server
 
 type User struct {
-	Inbox []*Email;
-	Outbox []*Email;
-	EmailAddress string;
+	Inbox []*Email; //The user's inbox
+	Outbox []*Email; //The user's outbox
+	EmailAddress string; //Email address of the user
 }
 
 

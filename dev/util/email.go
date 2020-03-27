@@ -6,10 +6,10 @@ import (
 )
 
 type Email struct {
-	Source string `json:"source"`
-	Destination string `json:"destination"`
-	Body string `json:"body"`
-	UUID string `json:"uuid"`
+	Source string `json:"source"` //The source address of the email (e.g. fred@here.com)
+	Destination string `json:"destination"` //The destination address of the email (e.g. wilma@there.com)
+	Body string `json:"body"` //The content of the email
+	UUID string `json:"uuid"` //Unique identifier
 }
 
 //Sets the UUID of the email

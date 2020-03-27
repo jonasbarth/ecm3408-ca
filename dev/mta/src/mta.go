@@ -10,7 +10,8 @@ import (
 	"github.com/gorilla/mux"
 	"log"
 	"time"
-	"os"
+	"math/rand"
+	"errors"
 )
 
 type MTA struct {
@@ -72,22 +73,22 @@ func (mta *MTA) SendEmail(w http.ResponseWriter, r *http.Request) {
 func (mta *MTA) PollMSA() {
 
 
-
-
 	for ok := true; ok; ok = true {
+		
+		//MSA is polled every 3-4 seconds to avoid all MTAs using the network at the same time
+		min := 3000
+		max := 4000
+		time.Sleep(mta.getRandom(min, max) * time.Millisecond)
 
 		//get all users from the MSA
-		time.Sleep(5000 * time.Millisecond)
 		users := mta.getUsers()
 
-		for _, emailAddress := range users {
-			
+		for _, emailAddress := range users {		
 
-			//Get the email from outbox of the MSA to which the email belongs
+			//Get the email from outbox of the MSA to which the email belongs. Also make sure we actually get an email before making further requests
 			if email, err := mta.peekOutbox(emailAddress); err == nil {
-
-				fmt.Println("Email successfully retrieved from " + emailAddress)
-
+				fmt.Printf("Peeking outbox %s\n", email.Destination)
+				fmt.Println(email)
 				//Delete the email from the outbox 
 				if ok, err1 := mta.deleteOutbox(email); ok  {
 					
@@ -98,8 +99,7 @@ func (mta *MTA) PollMSA() {
 						if MTAPostURL, err3 := mta.getURL(email.Destination); err3 == nil {
 
 							MTAPostURL = MTAPostURL + "/send/" + email.Destination
-							fmt.Println("Posting email to MTA at " + MTAPostURL)
-
+							
 							//Create and make the POST request
 							if req, err4 := http.NewRequest("POST", MTAPostURL, bytes.NewBuffer(enc)); err4 == nil {
 								
@@ -107,20 +107,17 @@ func (mta *MTA) PollMSA() {
 
 								//Get the response and implement error handling
 								if resp, err5 := client.Do(req); err5 == nil {
-									fmt.Printf("Reponse %s\n", resp.Status)
-									break
+									fmt.Printf("Response Code %s\n", resp.Status)
 									
 								} else {
 									//POST request failed
-									fmt.Printf("POST request to %s failed with error %s\n", email.Destination, err5)
-									break
-									
+									fmt.Printf("POST request to %s failed with error %s\n", email.Destination, err5)				
 								}
 
 							} else {
 								//POST request failed
 								fmt.Printf("POST request to %s failed with error %s\n", email.Destination, err4)
-								break	
+									
 							}
 						} else {
 							//Could not get the URL for the specified email addresss
@@ -131,7 +128,7 @@ func (mta *MTA) PollMSA() {
 					} else {
 						//Marshalling failed
 						fmt.Printf("Cannot marshal JSON with error %s\n", err2)
-						break
+						
 					}
 				} else {
 					//Could not delete the email from the user's outbox
@@ -141,8 +138,8 @@ func (mta *MTA) PollMSA() {
 							
 			} else {
 				//Could not get the email from the user's outbox
-				fmt.Println("Failed to get email from outbox with error %s\n", err)
-				break
+				fmt.Printf("Failed to get email from outbox with error %s\n", err)
+				
 			}
 
 		}
@@ -206,7 +203,13 @@ func (mta *MTA) peekOutbox(emailAddress string) (*util.Email, error) {
 			if body, err2 := ioutil.ReadAll(resp.Body); err2 == nil {
 
 				if err3 := json.Unmarshal(body, &email); err3 == nil {
-					return &email, nil
+					
+					if email.Source != "" {
+						return &email, nil
+					} else {
+						return nil, errors.New("Outbox of user " + emailAddress + " is empty")
+					}
+					
 				} else {
 					fmt.Printf("Could not unmarshal email with error %s\n", err3)
 					return nil, err3
@@ -233,9 +236,10 @@ func (mta *MTA) peekOutbox(emailAddress string) (*util.Email, error) {
 
 }
 
-
+//Deletes an email from this email server
+//Returns true, nil if delete successful
+//Returns false, error if unsuccessful
 func (mta *MTA) deleteOutbox(email *util.Email) (bool, error) {
-
 
 	MSADeleteURL := mta.MSAURL + "/outbox/" + email.Source + "/" + email.UUID
 
@@ -247,7 +251,7 @@ func (mta *MTA) deleteOutbox(email *util.Email) (bool, error) {
 		if resp, err1 := client.Do(req); err1 == nil {
 
 			if _, err2 := ioutil.ReadAll(resp.Body); err2 == nil {
-				
+			
 				return true, nil
 			} else {
 				fmt.Printf("DELETE failed with %s\n", err2)
@@ -269,6 +273,7 @@ func (mta *MTA) deleteOutbox(email *util.Email) (bool, error) {
 
 //Gets a list of users from the MSA of this email server
 //The list is used to poll the users' inboxes
+//Returns an empty list if no users exist on the server
 func (mta *MTA) getUsers() []string {
 
 	MSAGetURL := mta.MSAURL + "/users"
@@ -303,6 +308,13 @@ func (mta *MTA) getUsers() []string {
 
 }
 
+//Produces a random integer in the range of [min, max)
+//Used for the outbox polling intervals
+func (mta *MTA) getRandom(min int, max int) time.Duration {
+	rand.Seed(time.Now().UnixNano())
+ 	return time.Duration(rand.Intn(max - min + 1) + min)
+}
+
 
 func (mta *MTA) HandleRequests() {
 	router := mux.NewRouter().StrictSlash(true)
@@ -319,9 +331,6 @@ func main() {
 	msaAddress := "http://msa:7001"
 	mta := MTA{make([]*util.Email, 0), bluebookURL, ":7000", msaAddress}
 	go mta.HandleRequests()
-
-	mta.getURL("fred@here.com")
-	mta.getURL("fred@there.com")
 
 	go mta.PollMSA()
 

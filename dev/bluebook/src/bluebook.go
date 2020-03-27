@@ -31,20 +31,17 @@ func (blueBook *BlueBook) FindURL(w http.ResponseWriter, r *http.Request) {
 				w.Write([]byte(enc))
 	
 			} else {
+				//Error while marshaling to JSON
 				w.WriteHeader(http.StatusInternalServerError)
 			}
 		} else {
 			//the domain does not exist on the blue book server
 			w.WriteHeader(http.StatusNotFound)
-			fmt.Println("Domain doesnt exist:")
-			fmt.Println(domain)
 		}
 
 	} else {
 		//the email address is of the wrong format
 		w.WriteHeader(http.StatusNotFound)
-		fmt.Println("Email address has wrong format:")
-		fmt.Println(emailAddress)
 	}
 
 }

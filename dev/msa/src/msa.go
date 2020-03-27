@@ -42,13 +42,13 @@ func (msa *MSA) CreateUser(emailAddress string) bool {
 		user := util.User{make([]*util.Email, 0), make([]*util.Email, 0), emailAddress}
 		msa.Users[emailAddress] = &user
 		return true
+	
+	//Case where the user already exists and the domain of the email addresses is a match for this domain
 	} else if (msa.exists(emailAddress) && domain == msa.Domain) {
 		return true
 	}
 	return false
 }
-
-
 
 
 
@@ -59,11 +59,13 @@ func (msa *MSA) AddEmailToOutbox(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	var email util.Email;
 	
+	//Decode the JSON into an email struct
 	if err := decoder.Decode(&email); err == nil {
-
-
+		
+		//Create a user on this email server if necessary
 		if ok := msa.CreateUser(email.Source); ok {
-
+			
+			//Make sure the user exists on this erver
 			if _, ok := msa.Users[email.Source]; ok {
 				w.WriteHeader(http.StatusCreated)
 				email.SetUUID()
@@ -124,7 +126,7 @@ func (msa *MSA) ListOutbox(w http.ResponseWriter, r *http.Request) {
 	/*Check if the user exists*/
 	if msa.exists(user) {
 		w.WriteHeader(http.StatusOK)
-
+		
 		/*List the outbox*/
 		for _, email := range msa.Users[user].Outbox {
 			if enc, err := json.Marshal(email); err == nil {
@@ -172,8 +174,10 @@ func (msa *MSA) DeleteEmailFromOutbox(w http.ResponseWriter, r *http.Request) {
 	user := vars["user"]
 	uuid := vars["uuid"]
 
+	//make sure the user exists on this server
 	if msa.exists(user) {
-
+		
+		//The email was successfully deleted from the server
 		if ok := msa.Users[user].DeleteFromOutbox(uuid); ok {
 			fmt.Printf("Email with uuid %s successfully deleted from %s inbox\n", uuid, user)
 			w.WriteHeader(http.StatusAccepted)
@@ -283,15 +287,16 @@ func (msa *MSA) ListUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 
-//Helper method to determine whether a user exists on this server
+//Helper function to determine whether a user exists on this server
 //Returns true if user exists, false if user does not exist
 func (msa *MSA) exists(emailAddress string) bool {
 	_, ok := msa.Users[emailAddress]
 	return ok;
 }
 
+//Helper function to get all users on this email server
 func (msa *MSA) getUsers() []string {
-	//keys := reflect.ValueOf(msa.Users).MapKeys()
+	
 	users := []string{}
 	for user := range msa.Users {
 		users = append(users, user)
@@ -307,8 +312,6 @@ func main() {
 	msa2 := MSA{make(map[string]*util.User), "there.com", ":8001"}
 
 	msa2.HandleRequests()
-
-
 }
 
 
